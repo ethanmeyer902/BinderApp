@@ -470,7 +470,7 @@ export default function SearchScreen() {
                 onPress={() => handleToggleFavorite(item)}
               >
                 <Text style={styles.favoriteButtonText}>
-                  {isFavorite ? '★' : '☆'}
+                  {isFavorite ? '♥' : '♡'}
                 </Text>
               </Pressable>
             </View>
