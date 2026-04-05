@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
+import { DraxProvider, DraxView } from 'react-native-drax';
 
 type BinderCard = {
   id: string;
@@ -49,87 +50,112 @@ export default function BinderScreen() {
     }
   }
 
-  function handleSlotPress(slotIndex: number) {
+  function removeCard(index: number) {
+    const updated = [...slots];
+    updated[index] = null;
+    saveBinder(updated);
+  }
+
+  function handleSlotTap(index: number) {
     if (!isEditing) return;
 
-    const selectedCard = slots[slotIndex];
+    const card = slots[index];
 
-    if (!selectedCard) {
-      router.push(`/search?slot=${slotIndex}`);
+    if (!card) {
+      router.push(`/search?slot=${index}`);
       return;
     }
 
-    Alert.alert(
-      'Edit Card',
-      `"${selectedCard.name}"`,
-      [
-        {
-          text: 'Replace',
-          onPress: () => router.push(`/search?slot=${slotIndex}`),
-        },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => removeCard(slotIndex),
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]
-    );
+    Alert.alert('Edit Card', `"${card.name}"`, [
+      {
+        text: 'Replace',
+        onPress: () => router.push(`/search?slot=${index}`),
+      },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => removeCard(index),
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+    ]);
   }
 
-  function removeCard(slotIndex: number) {
+  function handleDrop(fromIndex: number, toIndex: number) {
+    if (!isEditing || fromIndex === toIndex) return;
+
     const updated = [...slots];
-    updated[slotIndex] = null;
+    const fromCard = updated[fromIndex];
+    const toCard = updated[toIndex];
+
+    updated[toIndex] = fromCard;
+    updated[fromIndex] = toCard ?? null;
+
     saveBinder(updated);
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>My Binder</Text>
+    <DraxProvider>
+      <View style={styles.container}>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>My Binder</Text>
 
-        <Pressable
-          style={[styles.editButton, isEditing && styles.doneButton]}
-          onPress={() => setIsEditing((prev) => !prev)}
-        >
-          <Text style={styles.editButtonText}>
-            {isEditing ? 'Done' : 'Edit'}
-          </Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.modeText}>
-        {isEditing
-          ? 'Tap a slot to add, replace, or remove cards'
-          : 'View mode'}
-      </Text>
-
-      <View style={styles.grid}>
-        {slots.map((card, index) => (
           <Pressable
-            key={index}
-            style={[
-              styles.slot,
-              isEditing && styles.slotEditing,
-            ]}
-            onPress={() => handleSlotPress(index)}
+            style={[styles.editButton, isEditing && styles.doneButton]}
+            onPress={() => setIsEditing((prev) => !prev)}
           >
-            {card ? (
-              <Image
-                source={card.image}
-                style={styles.image}
-                contentFit="contain"
-              />
-            ) : (
-              <Text style={styles.plus}>{isEditing ? '+' : ''}</Text>
-            )}
+            <Text style={styles.editButtonText}>
+              {isEditing ? 'Done' : 'Edit'}
+            </Text>
           </Pressable>
-        ))}
+        </View>
+
+        <Text style={styles.modeText}>
+          {isEditing
+            ? 'Tap a card to replace or remove it. Hold a card to drag it.'
+            : 'View mode'}
+        </Text>
+
+        <View style={styles.grid}>
+          {slots.map((card, index) => (
+            <DraxView
+              key={`slot-${index}`}
+              style={[
+                styles.slot,
+                isEditing && styles.slotEditing,
+              ]}
+              receivingStyle={styles.slotReceiving}
+              draggable={isEditing && !!card}
+              dragPayload={{ fromIndex: index }}
+              longPressDelay={250}
+              onReceiveDragDrop={({ dragged }) => {
+                const fromIndex = dragged.payload?.fromIndex;
+                if (typeof fromIndex === 'number') {
+                  handleDrop(fromIndex, index);
+                }
+              }}
+            >
+              <Pressable
+                style={styles.slotInner}
+                onPress={() => handleSlotTap(index)}
+              >
+                {card ? (
+                  <Image
+                    source={card.image}
+                    style={styles.image}
+                    contentFit="contain"
+                  />
+                ) : (
+                  <Text style={styles.plus}>{isEditing ? '+' : ''}</Text>
+                )}
+              </Pressable>
+            </DraxView>
+          ))}
+        </View>
       </View>
-    </View>
+    </DraxProvider>
   );
 }
 
@@ -179,13 +205,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#1d2430',
     borderRadius: 10,
     marginBottom: 10,
+    overflow: 'hidden',
+  },
+  slotInner: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   slotEditing: {
     borderWidth: 2,
     borderColor: '#3b82f6',
+  },
+  slotReceiving: {
+    borderWidth: 2,
+    borderColor: '#16a34a',
+    backgroundColor: '#1f2937',
   },
   plus: {
     color: '#94a3b8',

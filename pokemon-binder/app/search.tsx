@@ -137,15 +137,9 @@ export default function SearchScreen() {
   }
 
   function mergeUniqueCards(cards: PokemonCard[]) {
-    const uniqueMap = new Map<string, PokemonCard>();
-
-    for (const card of cards) {
-      if (!uniqueMap.has(card.id)) {
-        uniqueMap.set(card.id, card);
-      }
-    }
-
-    return Array.from(uniqueMap.values());
+    const map = new Map<string, PokemonCard>();
+    cards.forEach((c) => map.set(c.id, c));
+    return Array.from(map.values());
   }
 
   async function fetchCardsPage(pageNumber: number, setIdOverride?: string) {
@@ -220,6 +214,7 @@ export default function SearchScreen() {
       };
 
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(currentSlots));
+
       router.back();
     } catch (err) {
       console.log('Select card error', err);
@@ -235,7 +230,16 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Search Cards</Text>
+      {/* NEW HEADER WITH BACK BUTTON */}
+      <View style={styles.headerRow}>
+        <Pressable onPress={() => router.back()}>
+          <Text style={styles.backText}>← Back</Text>
+        </Pressable>
+
+        <Text style={styles.title}>Search Cards</Text>
+
+        <View style={{ width: 60 }} />
+      </View>
 
       <Pressable
         style={styles.setButton}
@@ -310,19 +314,9 @@ export default function SearchScreen() {
         visible={setModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setSetModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Choose a Set</Text>
-
-            <Pressable
-              style={styles.setOption}
-              onPress={() => handleSelectSet('', 'All Sets')}
-            >
-              <Text style={styles.setOptionText}>All Sets</Text>
-            </Pressable>
-
             <FlatList
               data={sets}
               keyExtractor={(item) => item.id}
@@ -335,13 +329,6 @@ export default function SearchScreen() {
                 </Pressable>
               )}
             />
-
-            <Pressable
-              style={styles.closeButton}
-              onPress={() => setSetModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </Pressable>
           </View>
         </View>
       </Modal>
@@ -356,35 +343,49 @@ const styles = StyleSheet.create({
     paddingTop: 70,
     paddingHorizontal: 16,
   },
-  title: {
-    color: 'white',
-    fontSize: 26,
-    fontWeight: '700',
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
-    textAlign: 'center',
   },
-  setButton: {
-    backgroundColor: '#1d2430',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-  },
-  setButtonLabel: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  setButtonValue: {
-    color: 'white',
+
+  backText: {
+    color: '#3b82f6',
     fontSize: 16,
     fontWeight: '600',
   },
+
+  title: {
+    color: 'white',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+
+  setButton: {
+    backgroundColor: '#1d2430',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+
+  setButtonLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+
+  setButtonValue: {
+    color: 'white',
+    fontSize: 16,
+  },
+
   searchRow: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 12,
   },
+
   input: {
     flex: 1,
     backgroundColor: '#1d2430',
@@ -392,96 +393,86 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
   },
+
   button: {
     backgroundColor: '#3b82f6',
     paddingHorizontal: 16,
     justifyContent: 'center',
     borderRadius: 10,
   },
+
   buttonText: {
     color: 'white',
     fontWeight: '700',
   },
+
   countText: {
     color: '#cbd5e1',
     marginBottom: 10,
   },
+
   loading: {
     color: '#cbd5e1',
     marginBottom: 10,
   },
+
   card: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
     backgroundColor: '#1d2430',
     padding: 10,
     borderRadius: 10,
+    marginBottom: 10,
   },
+
   image: {
     width: 70,
     height: 100,
     marginRight: 10,
   },
+
   name: {
     color: 'white',
     fontWeight: '700',
   },
+
   meta: {
     color: '#cbd5e1',
-    marginTop: 4,
   },
+
   loadMoreButton: {
     backgroundColor: '#3b82f6',
     padding: 14,
     borderRadius: 10,
     alignItems: 'center',
     marginTop: 8,
-    marginBottom: 30,
   },
+
   loadMoreText: {
     color: 'white',
     fontWeight: '700',
   },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
+
   modalContent: {
     backgroundColor: '#10131a',
-    maxHeight: '75%',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    maxHeight: '70%',
     padding: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
-  modalTitle: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
+
   setOption: {
-    backgroundColor: '#1d2430',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    marginBottom: 8,
+    padding: 12,
+    borderBottomColor: '#334155',
+    borderBottomWidth: 1,
   },
+
   setOptionText: {
     color: 'white',
-    fontSize: 16,
-  },
-  closeButton: {
-    backgroundColor: '#334155',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  closeButtonText: {
-    color: 'white',
-    fontWeight: '700',
   },
 });
