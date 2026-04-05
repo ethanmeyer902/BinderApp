@@ -1,6 +1,6 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 
@@ -13,43 +13,27 @@ type BinderCard = {
 const STORAGE_KEY = 'binder-page-1';
 
 export default function BinderScreen() {
-  const params = useLocalSearchParams();
-
   const [slots, setSlots] = useState<BinderCard[]>(Array(9).fill(null));
+  const [isEditing, setIsEditing] = useState(false);
 
-  // Load saved binder
   useEffect(() => {
     loadBinder();
   }, []);
 
-  // Handle returning from search
-  useEffect(() => {
-    if (params.slot && params.cardImage) {
-      const index = Number(params.slot);
-
-      if (!Number.isNaN(index)) {
-        const updated = [...slots];
-
-        updated[index] = {
-          id: params.cardId as string,
-          name: params.cardName as string,
-          image: params.cardImage as string,
-        };
-
-        setSlots(updated);
-        saveBinder(updated);
-
-        // Prevent re-trigger loop
-        router.setParams({});
-      }
-    }
-  }, [params]);
+  useFocusEffect(
+    useCallback(() => {
+      loadBinder();
+    }, [])
+  );
 
   async function loadBinder() {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
+
       if (raw) {
         setSlots(JSON.parse(raw));
+      } else {
+        setSlots(Array(9).fill(null));
       }
     } catch (e) {
       console.log('Load error', e);
@@ -59,30 +43,88 @@ export default function BinderScreen() {
   async function saveBinder(updated: BinderCard[]) {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      setSlots(updated);
     } catch (e) {
       console.log('Save error', e);
     }
   }
 
-  function openSearch(slotIndex: number) {
-    router.push(`/search?slot=${slotIndex}`);
+  function handleSlotPress(slotIndex: number) {
+    if (!isEditing) return;
+
+    const selectedCard = slots[slotIndex];
+
+    if (!selectedCard) {
+      router.push(`/search?slot=${slotIndex}`);
+      return;
+    }
+
+    Alert.alert(
+      'Edit Card',
+      `"${selectedCard.name}"`,
+      [
+        {
+          text: 'Replace',
+          onPress: () => router.push(`/search?slot=${slotIndex}`),
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => removeCard(slotIndex),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
+  }
+
+  function removeCard(slotIndex: number) {
+    const updated = [...slots];
+    updated[slotIndex] = null;
+    saveBinder(updated);
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>My Binder</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>My Binder</Text>
+
+        <Pressable
+          style={[styles.editButton, isEditing && styles.doneButton]}
+          onPress={() => setIsEditing((prev) => !prev)}
+        >
+          <Text style={styles.editButtonText}>
+            {isEditing ? 'Done' : 'Edit'}
+          </Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.modeText}>
+        {isEditing
+          ? 'Tap a slot to add, replace, or remove cards'
+          : 'View mode'}
+      </Text>
 
       <View style={styles.grid}>
         {slots.map((card, index) => (
           <Pressable
             key={index}
-            style={styles.slot}
-            onPress={() => openSearch(index)}
+            style={[
+              styles.slot,
+              isEditing && styles.slotEditing,
+            ]}
+            onPress={() => handleSlotPress(index)}
           >
             {card ? (
-              <Image source={card.image} style={styles.image} contentFit="contain" />
+              <Image
+                source={card.image}
+                style={styles.image}
+                contentFit="contain"
+              />
             ) : (
-              <Text style={styles.plus}>+</Text>
+              <Text style={styles.plus}>{isEditing ? '+' : ''}</Text>
             )}
           </Pressable>
         ))}
@@ -98,12 +140,33 @@ const styles = StyleSheet.create({
     paddingTop: 70,
     paddingHorizontal: 16,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   title: {
     color: 'white',
     fontSize: 26,
     fontWeight: '700',
-    marginBottom: 20,
-    textAlign: 'center',
+  },
+  editButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  doneButton: {
+    backgroundColor: '#16a34a',
+  },
+  editButtonText: {
+    color: 'white',
+    fontWeight: '700',
+  },
+  modeText: {
+    color: '#cbd5e1',
+    marginBottom: 16,
   },
   grid: {
     flexDirection: 'row',
@@ -119,6 +182,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  slotEditing: {
+    borderWidth: 2,
+    borderColor: '#3b82f6',
   },
   plus: {
     color: '#94a3b8',
