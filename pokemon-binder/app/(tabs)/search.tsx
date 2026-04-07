@@ -10,25 +10,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   FavoriteCard,
   getFavorites,
   toggleFavorite,
 } from '@/lib/favoritesStorage';
+import {
+  clearPickerTarget,
+  loadPickerTarget,
+  placeCardInBinder,
+} from '@/lib/binderStorage';
 
-const STORAGE_KEY = 'binder-page-1';
-const PICKER_SLOT_KEY = 'binder-picker-slot';
 const PAGE_SIZE = 250;
-
-type BinderCard = {
-  id: string;
-  name: string;
-  image: string;
-} | null;
 
 type PokemonSet = {
   id: string;
@@ -48,6 +45,11 @@ type PokemonCard = {
     name?: string;
   };
 };
+
+type PickerTarget = {
+  pageIndex: number;
+  slotIndex: number;
+} | null;
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
@@ -70,10 +72,10 @@ export default function SearchScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
 
-  const [pickerSlot, setPickerSlot] = useState<string | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
-  const isPickerMode = pickerSlot !== null;
+  const isPickerMode = pickerTarget !== null;
 
   useEffect(() => {
     loadSets();
@@ -81,7 +83,7 @@ export default function SearchScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadPickerSlot();
+      refreshPickerTarget();
       loadFavoriteIds();
     }, [])
   );
@@ -101,22 +103,9 @@ export default function SearchScreen() {
     };
   }, []);
 
-  async function loadPickerSlot() {
-    try {
-      const value = await AsyncStorage.getItem(PICKER_SLOT_KEY);
-      setPickerSlot(value);
-    } catch (err) {
-      console.log('Load picker slot error', err);
-    }
-  }
-
-  async function clearPickerSlot() {
-    try {
-      await AsyncStorage.removeItem(PICKER_SLOT_KEY);
-      setPickerSlot(null);
-    } catch (err) {
-      console.log('Clear picker slot error', err);
-    }
+  async function refreshPickerTarget() {
+    const target = await loadPickerTarget();
+    setPickerTarget(target);
   }
 
   async function loadFavoriteIds() {
@@ -217,7 +206,7 @@ export default function SearchScreen() {
 
   function mergeUniqueCards(cards: PokemonCard[]) {
     const map = new Map<string, PokemonCard>();
-    cards.forEach((c) => map.set(c.id, c));
+    cards.forEach((card) => map.set(card.id, card));
     return Array.from(map.values());
   }
 
@@ -294,28 +283,20 @@ export default function SearchScreen() {
   }
 
   async function selectCard(card: PokemonCard) {
-    if (isPickerMode) {
+    if (isPickerMode && pickerTarget) {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        const currentSlots: BinderCard[] = raw
-          ? JSON.parse(raw)
-          : Array(9).fill(null);
-
-        const index = Number(pickerSlot);
-        if (Number.isNaN(index)) return;
-
-        currentSlots[index] = {
+        await placeCardInBinder(pickerTarget.pageIndex, pickerTarget.slotIndex, {
           id: card.id,
           name: card.name,
           image: card.images.small,
-        };
+        });
 
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(currentSlots));
-        await clearPickerSlot();
-
+        await clearPickerTarget();
+        setPickerTarget(null);
         router.push('/(tabs)');
       } catch (err) {
         console.log('Select card error', err);
+        Alert.alert('Error', 'Could not place the card in the binder.');
       }
 
       return;
@@ -332,7 +313,8 @@ export default function SearchScreen() {
   }
 
   async function handleBackFromPickerMode() {
-    await clearPickerSlot();
+    await clearPickerTarget();
+    setPickerTarget(null);
     router.push('/(tabs)');
   }
 
@@ -381,7 +363,7 @@ export default function SearchScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View style={{ width: 60 }}>
+        <View style={styles.sideSpacer}>
           {isPickerMode ? (
             <Pressable onPress={handleBackFromPickerMode}>
               <Text style={styles.backText}>← Back</Text>
@@ -391,7 +373,7 @@ export default function SearchScreen() {
 
         <Text style={styles.title}>Search Cards</Text>
 
-        <View style={{ width: 60 }} />
+        <View style={styles.sideSpacer} />
       </View>
 
       <Pressable
@@ -416,12 +398,21 @@ export default function SearchScreen() {
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={() => search()}
+          returnKeyType="search"
         />
 
         <Pressable style={styles.button} onPress={() => search()}>
           <Text style={styles.buttonText}>Go</Text>
         </Pressable>
       </View>
+
+      {isPickerMode && pickerTarget ? (
+        <View style={styles.infoBanner}>
+          <Text style={styles.infoBannerText}>
+            Adding to page {pickerTarget.pageIndex + 1}, slot {pickerTarget.slotIndex + 1}
+          </Text>
+        </View>
+      ) : null}
 
       {totalCount > 0 ? (
         <Text style={styles.countText}>
@@ -436,29 +427,26 @@ export default function SearchScreen() {
       <FlatList
         data={results}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={styles.listContent}
         renderItem={({ item }) => {
           const isFavorite = favoriteIds.includes(item.id);
 
           return (
             <View style={styles.card}>
-              <Pressable
-                style={styles.cardMain}
-                onPress={() => selectCard(item)}
-              >
+              <Pressable style={styles.cardMain} onPress={() => selectCard(item)}>
                 <Image
                   source={item.images.small}
                   style={styles.image}
                   contentFit="contain"
                 />
-                <View style={{ flex: 1 }}>
+                <View style={styles.cardTextWrap}>
                   <Text style={styles.name}>{item.name}</Text>
                   <Text style={styles.meta}>
                     {item.set?.name || 'Unknown Set'} #{item.number || '?'}
                   </Text>
-                  {!isPickerMode ? (
-                    <Text style={styles.placeHint}>Tap to place in binder</Text>
-                  ) : null}
+                  <Text style={styles.placeHint}>
+                    {isPickerMode ? 'Tap to place in this binder slot' : 'Tap to place in binder'}
+                  </Text>
                 </View>
               </Pressable>
 
@@ -494,7 +482,7 @@ export default function SearchScreen() {
       <Modal
         visible={setModalVisible}
         animationType="slide"
-        transparent={true}
+        transparent
         onRequestClose={() => {
           setSelectedSeries(null);
           setSetFilterQuery('');
@@ -614,49 +602,44 @@ const styles = StyleSheet.create({
     paddingTop: 70,
     paddingHorizontal: 16,
   },
-
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-
+  sideSpacer: {
+    width: 60,
+  },
   backText: {
     color: '#3b82f6',
     fontSize: 16,
     fontWeight: '600',
   },
-
   title: {
     color: 'white',
     fontSize: 22,
     fontWeight: '700',
   },
-
   setButton: {
     backgroundColor: '#1d2430',
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
   },
-
   setButtonLabel: {
     color: '#94a3b8',
     fontSize: 12,
   },
-
   setButtonValue: {
     color: 'white',
     fontSize: 16,
   },
-
   searchRow: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 12,
   },
-
   input: {
     flex: 1,
     backgroundColor: '#1d2430',
@@ -664,29 +647,39 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
   },
-
   button: {
     backgroundColor: '#3b82f6',
     paddingHorizontal: 16,
     justifyContent: 'center',
     borderRadius: 10,
   },
-
   buttonText: {
     color: 'white',
     fontWeight: '700',
   },
-
+  infoBanner: {
+    backgroundColor: '#1e3a8a',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  infoBannerText: {
+    color: 'white',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   countText: {
     color: '#cbd5e1',
     marginBottom: 10,
   },
-
   loading: {
     color: '#cbd5e1',
     marginBottom: 10,
   },
-
+  listContent: {
+    paddingBottom: 40,
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -695,52 +688,46 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     overflow: 'hidden',
   },
-
   cardMain: {
     flex: 1,
     flexDirection: 'row',
     padding: 10,
   },
-
+  cardTextWrap: {
+    flex: 1,
+  },
   image: {
     width: 70,
     height: 100,
     marginRight: 10,
   },
-
   name: {
     color: 'white',
     fontWeight: '700',
   },
-
   meta: {
     color: '#cbd5e1',
   },
-
   placeHint: {
     color: '#60a5fa',
     marginTop: 6,
     fontSize: 12,
     fontWeight: '600',
   },
-
   favoriteButton: {
     width: 52,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#334155',
   },
-
   favoriteButtonActive: {
     backgroundColor: '#f59e0b',
   },
-
   favoriteButtonText: {
     color: 'white',
     fontSize: 22,
     fontWeight: '700',
   },
-
   loadMoreButton: {
     backgroundColor: '#3b82f6',
     padding: 14,
@@ -748,28 +735,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-
   loadMoreText: {
     color: 'white',
     fontWeight: '700',
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-
   keyboardAvoidingContainer: {
     flex: 1,
     justifyContent: 'flex-end',
   },
-
   modalContent: {
     backgroundColor: '#10131a',
     padding: 16,
   },
-
   modalTitle: {
     color: 'white',
     fontSize: 20,
@@ -777,7 +759,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-
   modalInput: {
     backgroundColor: '#1d2430',
     color: 'white',
@@ -785,32 +766,26 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 12,
   },
-
   modalList: {
     flex: 1,
   },
-
   backRow: {
     marginBottom: 10,
   },
-
   modalBackText: {
     color: '#3b82f6',
     fontSize: 16,
     fontWeight: '600',
   },
-
   setOption: {
     padding: 12,
     borderBottomColor: '#334155',
     borderBottomWidth: 1,
   },
-
   setOptionText: {
     color: 'white',
     fontSize: 16,
   },
-
   closeButton: {
     backgroundColor: '#334155',
     paddingVertical: 14,
@@ -818,7 +793,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
-
   closeButtonText: {
     color: 'white',
     fontWeight: '700',
